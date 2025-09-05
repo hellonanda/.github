@@ -120,8 +120,14 @@ jobs:
       - name: Save Grype JSON to file
         shell: bash
         run: |
-          printf '%s' "${{ steps.grype.outputs.json }}" > grype-results.json
-          echo "GRYPE_JSON=grype-results.json" >> $GITHUB_ENV
+          if [ -n "${{ steps.grype.outputs.json }}" ]; then
+            printf '%s' "${{ steps.grype.outputs.json }}" > grype-results.json
+            echo "GRYPE_JSON=grype-results.json" >> $GITHUB_ENV
+          else
+            echo "{}" > grype-results.json
+            echo "GRYPE_JSON=grype-results.json" >> $GITHUB_ENV
+          fi
+
 
   
       # 3️⃣ Upload JSON artifact
@@ -156,8 +162,8 @@ jobs:
         run: |
           JSON="$GRYPE_JSON"
           if [ -f "$JSON" ]; then
-            CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length' "$JSON")
-            HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length' "$JSON")
+            CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length // 0' "$JSON")
+            HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length // 0' "$JSON")
       
             {
               echo "## Security Summary"
@@ -172,20 +178,25 @@ jobs:
               echo "|---|---|---|---|---|"
             } >> "$GITHUB_STEP_SUMMARY"
       
-            jq -r '
-              .matches[]
-              | select(.vulnerability.severity=="Critical" or .vulnerability.severity=="High")
-              | [ .vulnerability.severity
-                , .vulnerability.id
-                , .artifact.name
-                , (.artifact.version // "n/a")
-                , ((.vulnerability.fix.versions[0]) // "none")
-                ]
-              | @tsv
-            ' "$JSON" | head -n 15 | awk -F'\t' '{printf("| %s | %s | %s | %s | %s |\n",$1,$2,$3,$4,$5)}' >> "$GITHUB_STEP_SUMMARY"
+            if [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+              jq -r '
+                .matches[]
+                | select(.vulnerability.severity=="Critical" or .vulnerability.severity=="High")
+                | [ .vulnerability.severity
+                  , .vulnerability.id
+                  , .artifact.name
+                  , (.artifact.version // "n/a")
+                  , ((.vulnerability.fix.versions[0]) // "none")
+                  ]
+                | @tsv
+              ' "$JSON" | head -n 15 | awk -F'\t' '{printf("| %s | %s | %s | %s | %s |\n",$1,$2,$3,$4,$5)}' >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No High/Critical vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            echo "No Grype JSON output found." >> "$GITHUB_STEP_SUMMARY"
+            echo "No Grype JSON file found." >> "$GITHUB_STEP_SUMMARY"
           fi
+
 
   
       # 7️⃣ Fail the job if High/Critical exist

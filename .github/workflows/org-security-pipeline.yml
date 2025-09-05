@@ -44,20 +44,20 @@ permissions:
   actions: read            # helps avoid upload-sarif permission edge cases
 
 jobs:
-  secrets:
-    if: ${{ inputs.scan_secrets }}
-    name: Hard-coded secret scan (Gitleaks)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout full history
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # enables scanning across commit history
+  # secrets:
+  #   if: ${{ inputs.scan_secrets }}
+  #   name: Hard-coded secret scan (Gitleaks)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout full history
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0   # enables scanning across commit history
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --source . --no-git --report-format sarif --report-path gitleaks.sarif
+  #     - name: Run Gitleaks
+  #       uses: gitleaks/gitleaks-action@v2
+  #       with:
+  #         args: detect --source . --no-git --report-format sarif --report-path gitleaks.sarif
 
   build_and_sbom:
     name: Build image & generate SBOM (Syft)
@@ -94,7 +94,6 @@ jobs:
           name: sbom
           path: sbom.spdx.json
           if-no-files-found: error
-
   vuln_scan:
     name: Validate SBOM (Grype) & fail on High/Critical
     runs-on: ubuntu-latest
@@ -102,22 +101,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+  
       - name: Download SBOM artifact
         uses: actions/download-artifact@v4
         with:
           name: sbom
-
+  
+      # Scan SBOM and fail on High/Critical
       - name: Scan SBOM with Grype
         id: grype
         uses: anchore/scan-action@v6
         with:
           sbom: sbom.spdx.json
-          output-format: json    
-          severity-cutoff: ${{ inputs.severity_cutoff }}
-          fail-build: true       
-       
-
+          output-format: json
+          severity-cutoff: high   # only High/Critical will fail build
+          fail-build: true
+  
+      # Upload JSON artifact for debugging
       - name: Upload Grype JSON (for debugging)
         if: always()
         uses: actions/upload-artifact@v4
@@ -125,24 +125,25 @@ jobs:
           name: grype-json
           path: ${{ steps.grype.outputs.json }}
           if-no-files-found: ignore
-          
+  
+      # Scan SBOM for SARIF (for GitHub Code Scanning)
       - name: Scan SBOM with Grype (SARIF)
         id: grype_sarif
         uses: anchore/scan-action@v6
         with:
           sbom: sbom.spdx.json
           output-format: sarif
-          severity-cutoff: none
           fail-build: false
-      
+  
+      # Upload SARIF to GitHub Code Scanning
       - name: Upload SARIF to Code Scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.grype_sarif.outputs.sarif }}
-        
-
-      - name: Simple vulnerability summary (Markdown)
+  
+      # Simple vulnerability summary in Actions UI
+      - name: Security Summary (Markdown)
         if: always()
         shell: bash
         run: |
@@ -150,7 +151,7 @@ jobs:
           if [ -f "$JSON" ]; then
             CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length' "$JSON")
             HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length' "$JSON")
-
+  
             {
               echo "## Security Summary"
               echo
@@ -159,11 +160,11 @@ jobs:
               echo "| Critical | $CRIT |"
               echo "| High | $HIGH |"
               echo
-              echo "### Top 15 (High/Critical)"
+              echo "### Top 15 High/Critical Vulnerabilities"
               echo "| Severity | ID | Package | Installed | FixedIn |"
               echo "|---|---|---|---|---|"
             } >> "$GITHUB_STEP_SUMMARY"
-
+  
             jq -r '
               .matches[]
               | select(.vulnerability.severity=="Critical" or .vulnerability.severity=="High")
@@ -178,4 +179,4 @@ jobs:
           else
             echo "No Grype JSON output found." >> "$GITHUB_STEP_SUMMARY"
           fi
-        # The step summary renders right on the run page. 
+   

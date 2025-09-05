@@ -114,17 +114,16 @@ jobs:
         with:
           sbom: sbom.spdx.json
           output-format: json
-          fail-build: false  # don't fail yet
+          fail-build: false  # Don't fail yet
   
-      # 2️⃣ Save JSON to a known file
+      # 2️⃣ Save JSON output to a file
       - name: Save Grype JSON to file
         shell: bash
         run: |
-          GRYPE_JSON="grype-results.json"
-          cp grype*.json "$GRYPE_JSON"
-          echo "GRYPE_JSON=$GRYPE_JSON" >> $GITHUB_ENV
+          echo "${{ steps.grype.outputs.json }}" > grype-results.json
+          echo "GRYPE_JSON=grype-results.json" >> $GITHUB_ENV
   
-      # 3️⃣ Upload JSON artifact for inspection
+      # 3️⃣ Upload JSON artifact
       - name: Upload Grype JSON (artifact)
         if: always()
         uses: actions/upload-artifact@v4
@@ -133,7 +132,7 @@ jobs:
           path: ${{ env.GRYPE_JSON }}
           if-no-files-found: ignore
   
-      # 4️⃣ Scan SBOM for SARIF (for GitHub Code Scanning)
+      # 4️⃣ Scan SBOM for SARIF (Code Scanning)
       - name: Scan SBOM with Grype (SARIF)
         id: grype_sarif
         uses: anchore/scan-action@v6

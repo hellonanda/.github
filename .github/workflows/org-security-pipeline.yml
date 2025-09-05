@@ -120,8 +120,9 @@ jobs:
       - name: Save Grype JSON to file
         shell: bash
         run: |
-          echo "${{ steps.grype.outputs.json }}" > grype-results.json
+          printf '%s' "${{ steps.grype.outputs.json }}" > grype-results.json
           echo "GRYPE_JSON=grype-results.json" >> $GITHUB_ENV
+
   
       # 3️⃣ Upload JSON artifact
       - name: Upload Grype JSON (artifact)
@@ -157,7 +158,7 @@ jobs:
           if [ -f "$JSON" ]; then
             CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length' "$JSON")
             HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length' "$JSON")
-  
+      
             {
               echo "## Security Summary"
               echo
@@ -170,7 +171,7 @@ jobs:
               echo "| Severity | ID | Package | Installed | FixedIn |"
               echo "|---|---|---|---|---|"
             } >> "$GITHUB_STEP_SUMMARY"
-  
+      
             jq -r '
               .matches[]
               | select(.vulnerability.severity=="Critical" or .vulnerability.severity=="High")
@@ -185,6 +186,7 @@ jobs:
           else
             echo "No Grype JSON output found." >> "$GITHUB_STEP_SUMMARY"
           fi
+
   
       # 7️⃣ Fail the job if High/Critical exist
       - name: Fail on High/Critical vulnerabilities

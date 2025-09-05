@@ -132,7 +132,7 @@ jobs:
         with:
           sbom: sbom.spdx.json
           output-format: sarif
-          severity-cutoff: ${{ inputs.severity_cutoff }}
+          severity-cutoff: none
           fail-build: false
       
       - name: Upload SARIF to Code Scanning

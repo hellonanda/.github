@@ -107,25 +107,33 @@ jobs:
         with:
           name: sbom
   
-      # Scan SBOM and always produce JSON
+      # 1️⃣ Scan SBOM with Grype (JSON)
       - name: Scan SBOM with Grype (JSON)
         id: grype
         uses: anchore/scan-action@v6
         with:
           sbom: sbom.spdx.json
           output-format: json
-          fail-build: false   # Don't fail yet; we'll handle it manually
+          fail-build: false  # don't fail yet
   
-      # Upload JSON for debugging
+      # 2️⃣ Save JSON to a known file
+      - name: Save Grype JSON to file
+        shell: bash
+        run: |
+          GRYPE_JSON="grype-results.json"
+          cp grype*.json "$GRYPE_JSON"
+          echo "GRYPE_JSON=$GRYPE_JSON" >> $GITHUB_ENV
+  
+      # 3️⃣ Upload JSON artifact for inspection
       - name: Upload Grype JSON (artifact)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: grype-json
-          path: ${{ steps.grype.outputs.json }}
+          path: ${{ env.GRYPE_JSON }}
           if-no-files-found: ignore
   
-      # Scan SBOM for SARIF (GitHub Code Scanning)
+      # 4️⃣ Scan SBOM for SARIF (for GitHub Code Scanning)
       - name: Scan SBOM with Grype (SARIF)
         id: grype_sarif
         uses: anchore/scan-action@v6
@@ -134,19 +142,19 @@ jobs:
           output-format: sarif
           fail-build: false
   
-      # Upload SARIF to GitHub Code Scanning
+      # 5️⃣ Upload SARIF to GitHub Code Scanning
       - name: Upload SARIF to Code Scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.grype_sarif.outputs.sarif }}
   
-      # Security summary in Actions UI
+      # 6️⃣ Security summary in Actions UI
       - name: Security Summary (Markdown)
         if: always()
         shell: bash
         run: |
-          JSON="${{ steps.grype.outputs.json }}"
+          JSON="$GRYPE_JSON"
           if [ -f "$JSON" ]; then
             CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length' "$JSON")
             HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length' "$JSON")
@@ -179,11 +187,11 @@ jobs:
             echo "No Grype JSON output found." >> "$GITHUB_STEP_SUMMARY"
           fi
   
-      # Fail the job manually if High/Critical exist
+      # 7️⃣ Fail the job if High/Critical exist
       - name: Fail on High/Critical vulnerabilities
         shell: bash
         run: |
-          JSON="${{ steps.grype.outputs.json }}"
+          JSON="$GRYPE_JSON"
           if [ ! -f "$JSON" ]; then
             echo "No Grype JSON output found, skipping fail check."
             exit 0

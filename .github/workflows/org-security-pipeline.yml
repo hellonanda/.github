@@ -107,18 +107,17 @@ jobs:
         with:
           name: sbom
   
-      # Scan SBOM and fail on High/Critical
-      - name: Scan SBOM with Grype
+      # Scan SBOM and always produce JSON
+      - name: Scan SBOM with Grype (JSON)
         id: grype
         uses: anchore/scan-action@v6
         with:
           sbom: sbom.spdx.json
           output-format: json
-          severity-cutoff: high   # only High/Critical will fail build
-          fail-build: true
+          fail-build: false   # Don't fail yet; we'll handle it manually
   
-      # Upload JSON artifact for debugging
-      - name: Upload Grype JSON (for debugging)
+      # Upload JSON for debugging
+      - name: Upload Grype JSON (artifact)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -126,7 +125,7 @@ jobs:
           path: ${{ steps.grype.outputs.json }}
           if-no-files-found: ignore
   
-      # Scan SBOM for SARIF (for GitHub Code Scanning)
+      # Scan SBOM for SARIF (GitHub Code Scanning)
       - name: Scan SBOM with Grype (SARIF)
         id: grype_sarif
         uses: anchore/scan-action@v6
@@ -142,7 +141,7 @@ jobs:
         with:
           sarif_file: ${{ steps.grype_sarif.outputs.sarif }}
   
-      # Simple vulnerability summary in Actions UI
+      # Security summary in Actions UI
       - name: Security Summary (Markdown)
         if: always()
         shell: bash
@@ -179,4 +178,23 @@ jobs:
           else
             echo "No Grype JSON output found." >> "$GITHUB_STEP_SUMMARY"
           fi
-   
+  
+      # Fail the job manually if High/Critical exist
+      - name: Fail on High/Critical vulnerabilities
+        shell: bash
+        run: |
+          JSON="${{ steps.grype.outputs.json }}"
+          if [ ! -f "$JSON" ]; then
+            echo "No Grype JSON output found, skipping fail check."
+            exit 0
+          fi
+  
+          CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length' "$JSON")
+          HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length' "$JSON")
+  
+          echo "Critical: $CRIT, High: $HIGH"
+  
+          if [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "High/Critical vulnerabilities found, failing the job!"
+            exit 1
+          fi

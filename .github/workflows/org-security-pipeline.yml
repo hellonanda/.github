@@ -96,11 +96,13 @@ jobs:
           grype sbom:sbom.spdx.json --scope all-layers -o table --fail-on high --only-fixed
   
       - name: Upload SARIF to GitHub Code Scanning
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: grype-results.sarif
   
       - name: Show Summary and Fail on High/Critical
+        if: always()
         run: |
           if ! jq empty grype-results.json 2>/dev/null; then
             echo "❌ Invalid or empty Grype output. Skipping fail check."

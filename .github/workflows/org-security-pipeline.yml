@@ -56,23 +56,12 @@ jobs:
         if: ${{ inputs.build_image }}
         uses: docker/setup-buildx-action@v3
   
-      - name: Build Docker image (local)
-        if: ${{ inputs.build_image }}
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ inputs.context }}
-          file: ${{ inputs.dockerfile }}
-          load: false
-          tags: ${{ inputs.image_name }}:${{ github.sha }}
-  
+      - name: Build Docker image (CLI)
+        run: docker build -t ${{ inputs.image_name }}:${{ github.sha }} -f ${{ inputs.dockerfile }} .
+      
       - name: Generate SBOM (Syft)
-        id: sbom
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ inputs.image_name }}:${{ github.sha }}
-          format: spdx-json
-          output-file: sbom.spdx.json
-  
+        run: syft ${{ inputs.image_name }}:${{ github.sha }} -o spdx-json > sbom.spdx.json 
+        
       - name: Install Grype
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
@@ -86,36 +75,10 @@ jobs:
           grype sbom:sbom.spdx.json --scope all-layers -o sarif > grype-results.sarif
   
           # Console table + fail check
-          grype sbom:sbom.spdx.json --scope all-layers -o table --fail-on high --only-fixed
+          grype sbom:sbom.spdx.json --scope all-layers -o table --fail-on high
   
       - name: Upload SARIF to GitHub Code Scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: grype-results.sarif
-  
-      - name: Show Summary and Fail on High/Critical
-        if: always()
-        run: |
-          if ! jq empty grype-results.json 2>/dev/null; then
-            echo "❌ Invalid or empty Grype output. Skipping fail check."
-            cat grype-results.json || true
-            exit 0
-          fi
-  
-          CRIT=$(jq '[.matches[] | select(.vulnerability.severity=="Critical")] | length' grype-results.json)
-          HIGH=$(jq '[.matches[] | select(.vulnerability.severity=="High")] | length' grype-results.json)
-  
-          echo ""
-          echo "========== Vulnerability Summary =========="
-          echo "Critical: $CRIT"
-          echo "High:     $HIGH"
-          echo "==========================================="
-          echo ""
-  
-          if [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "❌ High or Critical vulnerabilities found! Failing the job."
-            exit 1
-          else
-            echo "✅ No High or Critical vulnerabilities found."
-          fi

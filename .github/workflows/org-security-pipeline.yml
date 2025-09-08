@@ -77,7 +77,7 @@ jobs:
           grype sbom:sbom.spdx.json --scope all-layers -o sarif > grype-results.sarif
   
           # Console table + fail check
-          grype sbom:sbom.spdx.json --scope all-layers -o table --fail-on high
+          grype sbom:sbom.spdx.json --scope all-layers -o table --fail-on high --sort-by severity
   
       - name: Upload SARIF to GitHub Code Scanning
         if: always()

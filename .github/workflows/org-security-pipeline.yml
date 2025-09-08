@@ -60,7 +60,9 @@ jobs:
         run: docker build -t ${{ inputs.image_name }}:${{ github.sha }} -f ${{ inputs.dockerfile }} .
       
       - name: Generate SBOM (Syft)
-        run: syft ${{ inputs.image_name }}:${{ github.sha }} -o spdx-json > sbom.spdx.json 
+        run: |
+            curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
+            syft ${{ inputs.image_name }}:${{ github.sha }} -o spdx-json > sbom.spdx.json 
         
       - name: Install Grype
         run: |
